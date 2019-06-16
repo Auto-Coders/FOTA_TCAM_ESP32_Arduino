@@ -1,4 +1,14 @@
 
+#define REQUEST_SEED 0x01
+#define SEND_KEY 0x02
+
+#define DEFAULT_SESSION 0x01 
+#define EXTENDED_SESSION 0x03 
+#define PROGRAMMING_SESSION 0x02
+
+long addr=0x10000;
+long len=0x10000;
+
 void Diagnostic_FlashTool_init()
 {
   tx_frame.FIR.B.FF = CAN_frame_std;
@@ -90,7 +100,6 @@ void UDSSecurityAccessCB(byte Request_Fn)
   byte seed_key[4];
   if (Request_Fn == REQUEST_SEED)
   {
-    pdu_len = 2;
     tx_frame.data.u8[0] = 0x02;
     tx_frame.data.u8[1] = 0x27;
     tx_frame.data.u8[2] = 0x01;
@@ -124,7 +133,7 @@ void UDSSecurityAccessCB(byte Request_Fn)
 
 void UDSRequestDownloadCB(long addr, long len)
 {
-  byte *ptr
+  byte *ptr;
   memset(tx_frame.data.u8, 0, 8);
   tx_frame.data.u8[0] = 0x10;
   tx_frame.data.u8[1] = 0x0b;
@@ -132,7 +141,7 @@ void UDSRequestDownloadCB(long addr, long len)
   tx_frame.data.u8[3] = 0x00;
   tx_frame.data.u8[4] = 0x44;
   //address
-  ptr = &addr;
+  ptr = (byte*)&addr;
   tx_frame.data.u8[5] = ptr[0];
   tx_frame.data.u8[6] = ptr[1];
   tx_frame.data.u8[7] = ptr[2];
@@ -146,7 +155,7 @@ void UDSRequestDownloadCB(long addr, long len)
   tx_frame.data.u8[0] = 0x21;
   tx_frame.data.u8[1] = ptr[3];
   //length
-  ptr = &len;
+  ptr = (byte*)&len;
   tx_frame.data.u8[2] = ptr[0];
   tx_frame.data.u8[3] = ptr[1];
   tx_frame.data.u8[4] = ptr[2];
@@ -166,17 +175,24 @@ void UDSRequestDownloadCB(long addr, long len)
   }
 }
 
-void UDSTransfertDataCB(int len, String SW_name)
+void UDSTransfertDataCB(String SW_name)
 {
   memset(tx_frame.data.u8, 0, 8);
   // get sw from SD card
   byte download_block_Sequence = 1;
-  pdu_len = 2;
   tx_frame.data.u8[0] = 0x36;
   tx_frame.data.u8[1] = download_block_Sequence;
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response flow control
   rxframe = can_rx_frame();
+  if (rxframe[1] == 0x76)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 void UDSRequestTransfertExitCB()
@@ -186,6 +202,14 @@ void UDSRequestTransfertExitCB()
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
   rxframe = can_rx_frame();
+  if (rxframe[1] == 0x77)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 void Reflash_ECU_Runable()
@@ -197,7 +221,7 @@ void Reflash_ECU_Runable()
   UDSSecurityAccessCB(SEND_KEY);
   UDSDiagnosisSessionControlCB(PROGRAMMING_SESSION);
   UDSRequestDownloadCB(addr, len);
-  UDSTransfertDataCB();
+  UDSTransfertDataCB("SW_Red.bin");
   UDSRequestTransfertExitCB();
   UDSRoutinControlCB(CHECK_MEMORY);
   UDSRoutinControlCB(WRITE_SECURITY_KEY);
