@@ -1,3 +1,21 @@
+
+enum can_return_val
+{
+  CAN_OK = 0,
+  CAN_NOK = 1
+};
+
+enum can_Rx_notification
+{
+  CANMCAL_NOTIFICATION = 0,
+  CANIF_RX_NOTIFICATION = 1,
+};
+
+enum can_Tx_notification
+{
+  CANMCAL_NOTIFICATION = 0,
+  CANMCAL_TX_NOTIFICATION = 1,
+};
 const int rx_queue_size = 10;       // Receive Queue size
 
 
@@ -5,7 +23,7 @@ void CAN_MCAL_init()
 {
   CAN_device_t CAN_cfg;               // CAN Config
   CAN_cfg.speed = CAN_SPEED_125KBPS;
-  CAN_cfg.tx_pin_id = GPIO_NUM_5;  
+  CAN_cfg.tx_pin_id = GPIO_NUM_5;
   CAN_cfg.rx_pin_id = GPIO_NUM_4;
   CAN_cfg.rx_queue = xQueueCreate(rx_queue_size, sizeof(CAN_frame_t));
   // Init CAN Module
@@ -53,4 +71,21 @@ void CAN_MCAL_Transmit_Frame()
   tx_frame.data.u8[6] = CanIFtoCAN_CAN_TX_Frame.data[6];
   tx_frame.data.u8[7] = CanIFtoCAN_CAN_TX_Frame.data[7];
   ESP32Can.CANWriteFrame(&tx_frame);
+}
+
+
+void CAN_MCAL_Runable()
+{
+  if (CAN_MCAL_Recieve_Frame() == CAN_OK)
+  {
+    CANRX_State = CANIF_RX_NOTIFICATION;
+  }
+  else
+  {
+    CANRX_State = CANMCAL_RX_NOTIFICATION;
+  }
+  if (CANTX_State == CANMCAL_TX_NOTIFICATION)
+  {
+    CAN_MCAL_Transmit_Frame(CanIFtoCAN_CAN_TX_Frame);
+  }
 }
