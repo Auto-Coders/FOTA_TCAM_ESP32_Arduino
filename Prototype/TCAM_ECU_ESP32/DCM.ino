@@ -1,160 +1,194 @@
-byte pdu[272];
-byte* Send_pdu;
-byte* Receive_pdu;
-int pdu_len = 0;
 
 void Diagnostic_FlashTool_init()
 {
-  Send_pdu = pdu;
-  Receive_pdu = pdu;
+  tx_frame.FIR.B.FF = CAN_frame_std;
+  tx_frame.MsgID = 0x001;
+  tx_frame.FIR.B.DLC = 8;
 }
 
 void UDSECUResetCB()
 {
-  Send_pdu[0] = 0x02;
-  Send_pdu[1] = 0x11;
-  Send_pdu[2] = 0x01;
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x02;
+  tx_frame.data.u8[1] = 0x11;
+  tx_frame.data.u8[2] = 0x01;
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
+  if (rxframe[1] == 0x51)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 void UDSDiagnosisSessionControlCB(byte Session_Request)
 {
-  pdu_len = 2;
-  Send_pdu[0] = 0x02;
-  Send_pdu[1] = 0x10;
-  Send_pdu[2] = Session_Request;
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x02;
+  tx_frame.data.u8[1] = 0x10;
+  tx_frame.data.u8[2] = Session_Request;
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
+  if (rxframe[1] == 0x50)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 void UDSCommunicationControlCB()
 {
-  pdu_len = 3;
-  Send_pdu[0] = 0x03;
-  Send_pdu[1] = 0x28;
-  Send_pdu[2] = 0x01; // subfunction
-  Send_pdu[3] = 0x01; // comm type
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x03;
+  tx_frame.data.u8[1] = 0x28;
+  tx_frame.data.u8[2] = 0x01; // subfunction
+  tx_frame.data.u8[3] = 0x01; // comm type
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
+  if (rxframe[1] == 0x68)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 void UDSControlDTCSettings()
 {
-  pdu_len = 2;
-  Send_pdu[0] = 0x02;
-  Send_pdu[1] = 0x85;
-  Send_pdu[2] = 0x01;
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x02;
+  tx_frame.data.u8[1] = 0x85;
+  tx_frame.data.u8[2] = 0x01;
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
+  if (rxframe[1] == 0xC5)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 
 void UDSSecurityAccessCB(byte Request_Fn)
 {
+  memset(tx_frame.data.u8, 0, 8);
   byte seed_key[4];
   if (Request_Fn == REQUEST_SEED)
   {
     pdu_len = 2;
-    Send_pdu[0] = 0x02;
-    Send_pdu[1] = 0x27;
-    Send_pdu[2] = 0x01;
-    Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+    tx_frame.data.u8[0] = 0x02;
+    tx_frame.data.u8[1] = 0x27;
+    tx_frame.data.u8[2] = 0x01;
+    ESP32Can.CANWriteFrame(&tx_frame);
+    // wait upto 500ms for response
+    rxframe = can_rx_frame();
   }
   else if (Request_Fn == SEND_KEY)
   {
-    pdu_len = 6;
-    Send_pdu[0] = 0x06;
-    Send_pdu[1] = 0x27;
-    Send_pdu[2] = 0x02;
-    Send_pdu[3] = seed_key[0];
-    Send_pdu[4] = seed_key[2];
-    Send_pdu[5] = seed_key[3];
-    Send_pdu[6] = seed_key[4];
-    Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+    memset(tx_frame.data.u8, 0, 8);
+    tx_frame.data.u8[0] = 0x06;
+    tx_frame.data.u8[1] = 0x27;
+    tx_frame.data.u8[2] = 0x02;
+    tx_frame.data.u8[3] = seed_key[0];
+    tx_frame.data.u8[4] = seed_key[2];
+    tx_frame.data.u8[5] = seed_key[3];
+    tx_frame.data.u8[6] = seed_key[4];
+    ESP32Can.CANWriteFrame(&tx_frame);
+    // wait upto 500ms for response
+    rxframe = can_rx_frame();
+  }
+  if (rxframe[1] == 0x67)
+  {
+    //success
+  }
+  else
+  {
+    //fail
   }
 }
 
 void UDSRequestDownloadCB(long addr, long len)
 {
   byte *ptr
-  pdu_len = 2;
-  Send_pdu[0] = 0x10;
-  Send_pdu[1] = 0x0b;
-  Send_pdu[2] = 0x34;
-  Send_pdu[3] = 0x00;
-  Send_pdu[4] = 0x44;
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x10;
+  tx_frame.data.u8[1] = 0x0b;
+  tx_frame.data.u8[2] = 0x34;
+  tx_frame.data.u8[3] = 0x00;
+  tx_frame.data.u8[4] = 0x44;
   //address
   ptr = &addr;
-  Send_pdu[5] = ptr[0];
-  Send_pdu[6] = ptr[1];
-  Send_pdu[7] = ptr[2];
+  tx_frame.data.u8[5] = ptr[0];
+  tx_frame.data.u8[6] = ptr[1];
+  tx_frame.data.u8[7] = ptr[2];
   //can send
-  
+  ESP32Can.CANWriteFrame(&tx_frame);
   // wait for flow control
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
+  memset(tx_frame.data.u8, 0, 8);
   //canreceive  send remaining frame
-  Send_pdu[0] = 0x21;
-  Send_pdu[1] = ptr[3];
+  tx_frame.data.u8[0] = 0x21;
+  tx_frame.data.u8[1] = ptr[3];
   //length
   ptr = &len;
-  Send_pdu[2] = ptr[0];
-  Send_pdu[3] = ptr[1];
-  Send_pdu[4] = ptr[2];
-  Send_pdu[5] = ptr[3];
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+  tx_frame.data.u8[2] = ptr[0];
+  tx_frame.data.u8[3] = ptr[1];
+  tx_frame.data.u8[4] = ptr[2];
+  tx_frame.data.u8[5] = ptr[3];
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
+
+
+  if (rxframe[1] == 0x74)
+  {
+    //success
+  }
+  else
+  {
+    //fail
+  }
 }
 
 void UDSTransfertDataCB(int len, String SW_name)
 {
+  memset(tx_frame.data.u8, 0, 8);
   // get sw from SD card
   byte download_block_Sequence = 1;
   pdu_len = 2;
-  Send_pdu[0] = 0x36;
-  Send_pdu[1] = download_block_Sequence;
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
-  //wait for response
+  tx_frame.data.u8[0] = 0x36;
+  tx_frame.data.u8[1] = download_block_Sequence;
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response flow control
+  rxframe = can_rx_frame();
 }
 
 void UDSRequestTransfertExitCB()
 {
-  pdu_len = 1;
-  Send_pdu[0] = 0x37;
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x37;
+  ESP32Can.CANWriteFrame(&tx_frame);
+  // wait upto 500ms for response
+  rxframe = can_rx_frame();
 }
 
-void UDSTesterPresent()
-{
-  pdu_len = 2;
-  Send_pdu[0] = 0x3E;
-  Send_pdu[1] = 0x00;
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
-}
-
-
-void UDSReadDataByIDCB(byte* subfn_id)
-{
-  pdu_len = 2;
-  Send_pdu[0] = 0x22;
-  Send_pdu[1] = subfn_id[0];
-  Send_pdu[2] = subfn_id[1];
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
-}
-
-void UDSWriteDataByIDCB(byte len, byte* data)
-{
-  pdu_len = 2;
-  Send_pdu[0] = 0x22;
-  Send_pdu[1] = subfn_id[0];
-  Send_pdu[2] = subfn_id[1];
-  for (i = 0; i < len; i++)
-  {
-    Send_pdu[3 + i] = data[i];
-  }
-  Receive_pdu = ISOTP_CanSend_Rec(pdu_len, Send_pdu);
-}
-
-void DCM_RUNABLE()
-{
-
-}
-
-void Reflash_ECU_Runable() 
+void Reflash_ECU_Runable()
 {
   UDSDiagnosisSessionControlCB(EXTENDED_SESSION);
   UDSCommunicationControlCB();

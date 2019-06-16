@@ -1,10 +1,9 @@
-struct Can_Frame
-{
-  long MsgID;
-  byte DLC;
-  byte data[8];
-};
- 
+#include <Arduino.h>
+#include <ESP32CAN.h>
+#include <CAN_config.h>
+CAN_frame_t tx_frame;
+CAN_frame_t rx_frame;
+byte* rxframe;
 void setup() {
   // put your setup code here, to run once:
 
