@@ -3,9 +3,13 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
+#include <CRC32.h>
 
 const char* ssid = "HANDE_WIFI";
 const char* password =  "3305725800";
+
+const char* filenamePath = "/NewFirmware.bin";
+const char* DownloadLink = "https://raw.githubusercontent.com/Auto-Coders/FOTA_TCAM_ESP32_Arduino/master/esp32can.bin";
 
 void setup()
 {
@@ -97,6 +101,8 @@ void appendFile(fs::FS &fs, const char * path, const char * message)
 void readFile(fs::FS &fs, const char * path)
 {
   char tempbuff[3];
+  // Calculate a checksum one byte at a time.
+  CRC32 crc;
 
   Serial.printf("Reading file: %s\n", path);
 
@@ -110,11 +116,135 @@ void readFile(fs::FS &fs, const char * path)
   Serial.print("Read from file: ");
   while (file.available())
   {
-    //Serial.write(file.read());
-    sprintf(tempbuff, "%02X", file.read());
-    Serial.print(tempbuff);
+    uint8_t readbyte = file.read();
+    crc.update(readbyte);
   }
   file.close();
+  // Once we have added all of the data, generate the final CRC32 checksum.
+  uint32_t checksum = crc.finalize();
+  Serial.printf("CRC is %X", checksum);
+}
+
+bool VerifyFile_CRC32(fs::FS &fs, const char * path)
+{
+  //Last 4 bytes of the bin file is the crc
+  // Calculate a checksum one byte at a time.
+  CRC32 crc;
+
+  Serial.printf("Reading file: %s\n", path);
+
+  File file = fs.open(path);
+
+  uint32_t flen = file.size();
+
+  //Ignoring last 4 bytes as it is CRC
+  flen = flen - 4;
+
+  if (!file)
+  {
+    Serial.println("Failed to open file for reading");
+    return false;
+  }
+
+  Serial.print("Read from file: \n");
+  while (flen)
+  {
+    uint8_t readbyte = file.read();
+    crc.update(readbyte);
+    flen--;
+  }
+
+  uint8_t ds[4] = {0};
+  uint32_t CRCinFile = 0;
+  Serial.printf("File size is %d\n", file.size());
+  if (file.seek((file.size() - 4)))
+  {
+    Serial.printf("Seek success\n");
+  }
+  else
+  {
+    Serial.printf("Seek fail\n");
+  }
+
+  Serial.printf("Current position is %d\n", file.position());
+
+  for (int i = 0; i < 4; i++)
+  {
+    ds[i] = file.read();
+    CRCinFile = (CRCinFile | (ds[i] << (8 * i))); //8*i
+  }
+
+  Serial.printf("CRC: %0.2X%0.2X%0.2X%0.2X\n", ds[3], ds[2], ds[1], ds[0]);
+
+  file.close();
+  // Once we have added all of the data, generate the final CRC32 checksum.
+  uint32_t CRCCalculated = crc.finalize();
+
+  if (CRCCalculated == CRCinFile)
+  {
+    Serial.printf("CRC is %X calculated is %X, File OK\n", CRCinFile, CRCCalculated);
+    return true;
+  }
+  else
+  {
+    Serial.printf("CRC is %X calculated is %X, File corrupted\n", CRCinFile, CRCCalculated);
+    return false;
+  }
+}
+
+//Max bytes is 8
+bool TransferFile(fs::FS &fs, const char * path)
+{
+  //Last 4 bytes of the bin file is the crc
+  //Calculate a checksum one byte at a time.
+  CRC32 crc;
+  uint32_t ByteCounter = 0, i = 0;
+  uint8_t ReadBuffer[8] = {0};
+
+  Serial.printf("Reading file: %s\n", path);
+
+  File file = fs.open(path);
+
+  uint32_t flen = file.size();
+
+  //Ignoring last 4 bytes as it is CRC
+  flen = flen - 4;
+
+  if (!file)
+  {
+    Serial.println("Failed to open file for reading");
+    return false;
+  }
+
+  Serial.print("Read from file: \n");
+  while(flen)
+  {
+    ReadBuffer[i++] = file.read();
+
+    i = i%8;
+    
+    ByteCounter++;
+    if(ByteCounter % 8 == 0)
+    {
+      //Send via CAN
+      //Remove, added for debugging only
+//      Serial.printf("%2X %2X %2X %2X %2X %2X %2X %2X\n", ReadBuffer[0], ReadBuffer[1], ReadBuffer[2], ReadBuffer[3],
+//                                                        ReadBuffer[4], ReadBuffer[5], ReadBuffer[6], ReadBuffer[7]);
+    }
+
+    flen--;
+
+    //Leftover bytes
+    if((flen == 0)&&(ByteCounter % 8 != 0))
+    {
+      //Send via CAN
+      //Remove, added for debugging only
+//      Serial.printf("%2X %2X %2X %2X %2X %2X %2X %2X\n", ReadBuffer[0], ReadBuffer[1], ReadBuffer[2], ReadBuffer[3],
+//                                                        ReadBuffer[4], ReadBuffer[5], ReadBuffer[6], ReadBuffer[7]);
+    }
+  }
+
+  return true;
 }
 
 void deleteFile(fs::FS &fs, const char * path)
@@ -131,90 +261,103 @@ void deleteFile(fs::FS &fs, const char * path)
 }
 
 // create buffer for read
-uint8_t buff[64] = { 0 };
+uint8_t buff[512] = { 0 };
+
+//Call this only when Wifi is connected
+bool DownloadFile(void)
+{
+  uint32_t filelen;
+  HTTPClient http;
+  bool retval = false;
+  
+  http.begin(DownloadLink);
+  int httpCode = http.GET();                                        //Make the request
+
+  if (httpCode > 0)
+  { //Check for the returning code
+
+    // get lenght of document (is -1 when Server sends no Content-Length header)
+    int len = http.getSize();
+    filelen = len;
+
+    // get tcp stream
+    WiFiClient * stream = http.getStreamPtr();
+
+    deleteFile(SD, filenamePath);
+    File file = SD.open(filenamePath, FILE_WRITE);
+
+    // read all data from server
+    while (http.connected() && (len > 0 || len == -1))
+    {
+      // get available data size
+      size_t size = stream->available();
+
+      if (size)
+      {
+        // read up to 128 byte
+        int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+
+        //Append to file
+        file.write((const uint8_t*) buff, c);
+        memset(buff, 0, sizeof(buff));
+
+        if (len > 0)
+        {
+          len -= c;
+        }
+      }
+    }
+    file.close();
+
+    retval = true;
+  }
+  else
+  {
+    Serial.println("Error on HTTP request");
+  }
+
+  http.end(); //Free the resources
+
+  return retval;
+}
 
 void loop()
 {
   //Get start timestamp
-  uint32_t start = millis();
+  uint32_t start;
   uint32_t end;
-  HTTPClient http;
   
-  if ((WiFi.status() == WL_CONNECTED)) 
+  uint32_t LoopItr = 0;
+
+  if ((WiFi.status() == WL_CONNECTED))
   { //Check the current connection status
-
-    //    http.begin("https://raw.githubusercontent.com/VPrajwal/Arduino_Libraries/master/rtsw_green_led.bin");
-    http.begin("https://raw.githubusercontent.com/Auto-Coders/FOTA_TCAM_ESP32_Arduino/master/esp32can.bin");
-    int httpCode = http.GET();                                        //Make the request
-
-    if (httpCode > 0)
-    { //Check for the returning code
-
-      // get lenght of document (is -1 when Server sends no Content-Length header)
-      int len = http.getSize();
-      Serial.print("Size:");
-      Serial.println(len);
-
-      char tempbuff[8];
-
-      // get tcp stream
-      WiFiClient * stream = http.getStreamPtr();
-
-      deleteFile(SD, "/hello.bin");
-      File file = SD.open("/hello.bin", FILE_WRITE);
-
-      // read all data from server
-      while (http.connected() && (len > 0 || len == -1))
-      {
-        // get available data size
-        size_t size = stream->available();
-
-        if (size)
-        {
-          // read up to 128 byte
-          int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-
-          //          for (int i = 0; i < sizeof(buff); i++)
-          //          {
-          //            if (i % 16 == 0)
-          //            {
-          //              Serial.println();
-          //            }
-          //            sprintf(tempbuff, "%02X", buff[i]);
-          //            Serial.print(tempbuff);
-          //          }
-
-          //Append to file
-          //file.write((const uint8_t*) buff,sizeof(buff));
-          file.write((const uint8_t*) buff, c);
-          memset(buff, 0, sizeof(buff));
-
-          if (len > 0)
-          {
-            len -= c;
-          }
-        }
-        //Disable
-        //        delay(1);
-      }
-      file.close();
+    if(DownloadFile())
+    {
+      Serial.println("Download successful");
     }
     else
     {
-      Serial.println("Error on HTTP request");
+      Serial.println("Error Download failed");
     }
-
-    http.end(); //Free the resources
   }
 
-  uint32_t filelen = http.getSize();
-  end = millis() - start;
-  Serial.printf("%u bytes written for %u ms\n", filelen, end);
+//  end = millis() - start;
+//  Serial.printf("%u bytes written for %u ms in %u iterations\n", filelen, end, LoopItr);
   //Serial.println("------------------------------------------------BIN read--------------------------------------------");
   //readFile(SD, "/hello.bin");
+//  start = millis();
+  if (VerifyFile_CRC32(SD, filenamePath))
+  {
+    Serial.println("File OK");
+  }
+  else
+  {
+    Serial.println("File Not OK");
+  }
+  TransferFile(SD, filenamePath);
+//  end = millis() - start;
+//  Serial.printf("Time required to verify CRC is %u\n", end);
   Serial.println("--------------------------------------------------END-----------------------------------------------");
 
   while (1);
-  delay(10000);
-
 }
