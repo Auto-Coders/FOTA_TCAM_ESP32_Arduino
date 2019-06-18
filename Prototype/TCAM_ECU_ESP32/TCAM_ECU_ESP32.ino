@@ -68,5 +68,16 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  Reflash_ECU_Runable();
+  bool   result = false;
+  if (Check_update())
+  {
+
+    result = DownloadFile();
+    result = result & VerifyFile_CRC32(SD, filenamePath);
+  }
+
+  if (result == true)
+  {
+    Reflash_ECU_Runable();
+  }
 }

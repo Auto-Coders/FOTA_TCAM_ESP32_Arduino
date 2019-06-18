@@ -1,12 +1,4 @@
-//#include <Arduino.h>
-//#include <ESP32CAN.h>
-//#include <CAN_config.h>
-//#include <WiFi.h>
-//#include <HTTPClient.h>
-//#include "FS.h"
-//#include "SD.h"
-//#include "SPI.h"
-//#include <CRC32.h>
+
 
 
 // create buffer for read
@@ -82,60 +74,6 @@ void deleteFile(fs::FS &fs, const char * path)
     Serial.println("Delete failed");
   }
 }
-//Max bytes is 8
-//bool TransferFile(fs::FS &fs, const char * path)
-//{
-//  //Last 4 bytes of the bin file is the crc
-//  //Calculate a checksum one byte at a time.
-//  CRC32 crc;
-//  uint32_t ByteCounter = 0, i = 0;
-//  uint8_t ReadBuffer[8] = {0};
-//
-//  Serial.printf("Reading file: %s\n", path);
-//
-//  File file = fs.open(path);
-//
-//  uint32_t flen = file.size();
-//
-//  //Ignoring last 4 bytes as it is CRC
-//  flen = flen - 4;
-//
-//  if (!file)
-//  {
-//    Serial.println("Failed to open file for reading");
-//    return false;
-//  }
-//
-//  Serial.print("Read from file: \n");
-//  while(flen)
-//  {
-//    ReadBuffer[i++] = file.read();
-//
-//    i = i%8;
-//
-//    ByteCounter++;
-//    if(ByteCounter % 8 == 0)
-//    {
-//      //Send via CAN
-//      //Remove, added for debugging only
-////      Serial.printf("%2X %2X %2X %2X %2X %2X %2X %2X\n", ReadBuffer[0], ReadBuffer[1], ReadBuffer[2], ReadBuffer[3],
-////                                                        ReadBuffer[4], ReadBuffer[5], ReadBuffer[6], ReadBuffer[7]);
-//    }
-//
-//    flen--;
-//
-//    //Leftover bytes
-//    if((flen == 0)&&(ByteCounter % 8 != 0))
-//    {
-//      //Send via CAN
-//      //Remove, added for debugging only
-////      Serial.printf("%2X %2X %2X %2X %2X %2X %2X %2X\n", ReadBuffer[0], ReadBuffer[1], ReadBuffer[2], ReadBuffer[3],
-////                                                        ReadBuffer[4], ReadBuffer[5], ReadBuffer[6], ReadBuffer[7]);
-//    }
-//  }
-//
-//  return true;
-//}
 
 bool VerifyFile_CRC32(fs::FS &fs, const char * path)
 {
@@ -271,4 +209,10 @@ bool VerifyDowloadedFile_CRC32(fs::FS &fs, const char * path)
     Serial.printf("CRC is %X calculated is %X, File corrupted\n", CRCinFile, CRCCalculated);
     return false;
   }
+}
+
+bool Check_update()
+{
+
+  return true;
 }
