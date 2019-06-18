@@ -286,11 +286,46 @@ void UDSRequestTransfertExitCB()
   }
 }
 
-void UDSRoutinControlCB(unsigned int Fn_ID)
+boolean UDSRoutinControlCB(unsigned int Fn_ID)
 {
   memset(tx_frame.data.u8, 0, 8);
-  tx_frame.data.u8[0] = 0x37;
+  if (Fn_ID == ERASE_MEMORY)
+  {
+    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[1] = 0x31;
+    tx_frame.data.u8[2] = 0x01;
+    tx_frame.data.u8[3] = 0xFF;
+    tx_frame.data.u8[4] = 0x00;
+    tx_frame.data.u8[5] = 0x01;
+  }
+  if (Fn_ID == CHECK_MEMORY)
+  {
+    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[1] = 0x31;
+    tx_frame.data.u8[2] = 0x01;
+    tx_frame.data.u8[3] = 0xFF;
+    tx_frame.data.u8[4] = 0x01;
+    tx_frame.data.u8[5] = 0x01;
+  }
+  if (Fn_ID == WRITE_SECURITY_KEY)
+  {
+    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[1] = 0x31;
+    tx_frame.data.u8[2] = 0x01;
+    tx_frame.data.u8[3] = 0xFF;
+    tx_frame.data.u8[4] = 0x02;
+    tx_frame.data.u8[5] = 0x01;
+  }
   ESP32Can.CANWriteFrame(&tx_frame);
+  rxframe = can_rx_frame();
+  if (rxframe[1] == 0x71)
+  {
+    //success
+  }
+  else
+  {
+    return false;
+  }
 }
 
 void Reflash_ECU_Runable()
@@ -303,7 +338,7 @@ void Reflash_ECU_Runable()
   UDSDiagnosisSessionControlCB(PROGRAMMING_SESSION);
   UDSRoutinControlCB(ERASE_MEMORY);
   UDSRequestDownloadCB(addr, len);
-  UDSTransfertDataCB(SD, "SW_Red.bin");
+  UDSTransfertDataCB(SD, filenamePath);
   UDSRequestTransfertExitCB();
   UDSRoutinControlCB(CHECK_MEMORY);
   UDSRoutinControlCB(WRITE_SECURITY_KEY);
