@@ -2,12 +2,16 @@
 #define REQUEST_SEED 0x01
 #define SEND_KEY 0x02
 
-#define DEFAULT_SESSION 0x01 
-#define EXTENDED_SESSION 0x03 
+#define DEFAULT_SESSION 0x01
+#define EXTENDED_SESSION 0x03
 #define PROGRAMMING_SESSION 0x02
 
-long addr=0x10000;
-long len=0x10000;
+#define CHECK_MEMORY 0xFF00
+#define ERASE_MEMORY 0xFF01
+#define WRITE_SECURITY_KEY 0xFF02
+
+long addr = 0x10000;
+long len = 0x10000;
 
 void Diagnostic_FlashTool_init()
 {
@@ -175,30 +179,100 @@ void UDSRequestDownloadCB(long addr, long len)
   }
 }
 
-void UDSTransfertDataCB(String SW_name)
+boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
 {
   memset(tx_frame.data.u8, 0, 8);
   // get sw from SD card
   byte download_block_Sequence = 1;
-  tx_frame.data.u8[0] = 0x36;
-  tx_frame.data.u8[1] = download_block_Sequence;
-  ESP32Can.CANWriteFrame(&tx_frame);
-  // wait upto 500ms for response flow control
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0x76)
+  int i, j;
+  File file = fs.open(path);
+  if (!file)
   {
-    //success
+    Serial.println("Failed to open file for reading");
+    return false;
   }
-  else
+  uint32_t flen = file.size();
+  byte sequence_counter = 0;
+  //Ignoring last 4 bytes as it is CRC
+  flen = flen - 4;
+
+  while (flen)
   {
-    //fail
+    memset(tx_frame.data.u8, 0, 8);
+    if (flen > 6)
+    {
+      tx_frame.data.u8[0] = 0x11;
+      tx_frame.data.u8[1] = 0x02;
+      tx_frame.data.u8[2] = 0x36;
+      tx_frame.data.u8[3] = download_block_Sequence;
+      for (i = 4; (i < 8) || (flen > 0); i++)
+      {
+        tx_frame.data.u8[i] = file.read();
+        flen--;
+      }
+      ESP32Can.CANWriteFrame(&tx_frame);
+      rxframe = can_rx_frame();
+      if (rxframe[0] == 0x30)
+      {
+        //success
+      }
+      else
+      {
+        return false;
+      }
+      memset(tx_frame.data.u8, 0, 8);
+
+      for (j = 0; (j < 252) && (flen > 0); j = j + 7)
+      {
+        sequence_counter++;
+        tx_frame.data.u8[0] = 0x20 + (0x0F & sequence_counter);
+        for (i = 1; (i < 8) && (flen > 0); i++)
+        {
+          tx_frame.data.u8[i] = file.read();
+          flen--;
+        }
+        ESP32Can.CANWriteFrame(&tx_frame);
+      }
+      rxframe = can_rx_frame();
+      if (rxframe[1] == 0x76)
+      {
+        //success
+      }
+      else
+      {
+        return false;
+      }
+    }
+    else
+    {
+      tx_frame.data.u8[0] = flen + 2;
+      tx_frame.data.u8[1] = 0x36;
+      tx_frame.data.u8[2] = download_block_Sequence;
+      for (i = 3; (i < 8) || (flen > 0); i++)
+      {
+        tx_frame.data.u8[i] = file.read();
+        flen--;
+      }
+      ESP32Can.CANWriteFrame(&tx_frame);
+      rxframe = can_rx_frame();
+      if (rxframe[1] == 0x76)
+      {
+        //success
+      }
+      else
+      {
+        return false;
+      }
+    }
   }
+  return true;
 }
 
 void UDSRequestTransfertExitCB()
 {
   memset(tx_frame.data.u8, 0, 8);
-  tx_frame.data.u8[0] = 0x37;
+  tx_frame.data.u8[0] = 0x01;
+  tx_frame.data.u8[1] = 0x37;
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
   rxframe = can_rx_frame();
@@ -212,6 +286,13 @@ void UDSRequestTransfertExitCB()
   }
 }
 
+void UDSRoutinControlCB(unsigned int Fn_ID)
+{
+  memset(tx_frame.data.u8, 0, 8);
+  tx_frame.data.u8[0] = 0x37;
+  ESP32Can.CANWriteFrame(&tx_frame);
+}
+
 void Reflash_ECU_Runable()
 {
   UDSDiagnosisSessionControlCB(EXTENDED_SESSION);
@@ -220,8 +301,9 @@ void Reflash_ECU_Runable()
   UDSSecurityAccessCB(REQUEST_SEED);
   UDSSecurityAccessCB(SEND_KEY);
   UDSDiagnosisSessionControlCB(PROGRAMMING_SESSION);
+  UDSRoutinControlCB(ERASE_MEMORY);
   UDSRequestDownloadCB(addr, len);
-  UDSTransfertDataCB("SW_Red.bin");
+  UDSTransfertDataCB(SD, "SW_Red.bin");
   UDSRequestTransfertExitCB();
   UDSRoutinControlCB(CHECK_MEMORY);
   UDSRoutinControlCB(WRITE_SECURITY_KEY);
