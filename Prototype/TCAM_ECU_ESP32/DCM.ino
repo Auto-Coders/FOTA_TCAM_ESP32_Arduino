@@ -145,7 +145,7 @@ boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
   //Ignoring last 4 bytes as it is CRC
   flen = flen - 4;
 
-  while (flen)
+  while (flen > 0)
   {
     memset(tx_frame.data.u8, 0, 8);
     if (flen > 6)
@@ -178,7 +178,7 @@ boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
         ESP32Can.CANWriteFrame(&tx_frame);
         Serial.println();
       }
-      can_rx_Frame(1, 0x76);
+      
       sequence_counter = 0;
     }
     else
@@ -192,14 +192,13 @@ boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
         flen--;
       }
       ESP32Can.CANWriteFrame(&tx_frame);
-      can_rx_Frame(1, 0x76);
     }
+    can_rx_Frame(1, 0x76);
     download_block_Sequence++;
     Serial.print("file size =");
     Serial.println(flen);
-    delay(100);
-    
   }
+  Serial.println("transferdata done");
   return true;
 }
 
