@@ -28,15 +28,7 @@ void UDSECUResetCB()
   tx_frame.data.u8[2] = 0x01;
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0x51)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
+  can_rx_Frame(1, 0x51);
 }
 
 void UDSDiagnosisSessionControlCB(byte Session_Request)
@@ -45,17 +37,10 @@ void UDSDiagnosisSessionControlCB(byte Session_Request)
   tx_frame.data.u8[0] = 0x02;
   tx_frame.data.u8[1] = 0x10;
   tx_frame.data.u8[2] = Session_Request;
+  Serial.println("11");
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0x50)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
+  can_rx_Frame(1, 0x50);
 }
 
 void UDSCommunicationControlCB()
@@ -67,15 +52,7 @@ void UDSCommunicationControlCB()
   tx_frame.data.u8[3] = 0x01; // comm type
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0x68)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
+  can_rx_Frame(1, 0x68);
 }
 
 void UDSControlDTCSettings()
@@ -86,15 +63,7 @@ void UDSControlDTCSettings()
   tx_frame.data.u8[2] = 0x01;
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0xC5)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
+  can_rx_Frame(1, 0xC5);
 }
 
 
@@ -109,7 +78,6 @@ void UDSSecurityAccessCB(byte Request_Fn)
     tx_frame.data.u8[2] = 0x01;
     ESP32Can.CANWriteFrame(&tx_frame);
     // wait upto 500ms for response
-    rxframe = can_rx_frame();
   }
   else if (Request_Fn == SEND_KEY)
   {
@@ -118,79 +86,60 @@ void UDSSecurityAccessCB(byte Request_Fn)
     tx_frame.data.u8[1] = 0x27;
     tx_frame.data.u8[2] = 0x02;
     tx_frame.data.u8[3] = seed_key[0];
-    tx_frame.data.u8[4] = seed_key[2];
-    tx_frame.data.u8[5] = seed_key[3];
-    tx_frame.data.u8[6] = seed_key[4];
+    tx_frame.data.u8[4] = seed_key[1];
+    tx_frame.data.u8[5] = seed_key[2];
+    tx_frame.data.u8[6] = seed_key[3];
     ESP32Can.CANWriteFrame(&tx_frame);
-    // wait upto 500ms for response
-    rxframe = can_rx_frame();
   }
-  if (rxframe[1] == 0x67)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
+  // wait upto 500ms for response
+  can_rx_Frame(1, 0x67);
 }
 
 void UDSRequestDownloadCB(long addr, long len)
 {
-  byte *ptr;
   memset(tx_frame.data.u8, 0, 8);
   tx_frame.data.u8[0] = 0x10;
   tx_frame.data.u8[1] = 0x0b;
   tx_frame.data.u8[2] = 0x34;
   tx_frame.data.u8[3] = 0x00;
   tx_frame.data.u8[4] = 0x44;
-  //address
-  ptr = (byte*)&addr;
-  tx_frame.data.u8[5] = ptr[0];
-  tx_frame.data.u8[6] = ptr[1];
-  tx_frame.data.u8[7] = ptr[2];
+  tx_frame.data.u8[5] = addr >> 24 & 0xFFu;
+  tx_frame.data.u8[6] = addr >> 16 & 0xFFu;
+  tx_frame.data.u8[7] = addr >> 8 & 0xFFu;
   //can send
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait for flow control
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
+  can_rx_Frame(0, 0x30);
   memset(tx_frame.data.u8, 0, 8);
   //canreceive  send remaining frame
   tx_frame.data.u8[0] = 0x21;
-  tx_frame.data.u8[1] = ptr[3];
+  tx_frame.data.u8[1] = addr & 0xFFu;
   //length
-  ptr = (byte*)&len;
-  tx_frame.data.u8[2] = ptr[0];
-  tx_frame.data.u8[3] = ptr[1];
-  tx_frame.data.u8[4] = ptr[2];
-  tx_frame.data.u8[5] = ptr[3];
+  tx_frame.data.u8[2] = len >> 24 & 0xFFu;
+  tx_frame.data.u8[3] = len >> 16 & 0xFFu;
+  tx_frame.data.u8[4] = len >> 8 & 0xFFu;
+  tx_frame.data.u8[5] = len & 0xFFu;
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
+  can_rx_Frame(1, 0x74);
 
-
-  if (rxframe[1] == 0x74)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
 }
 
 boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
 {
-  memset(tx_frame.data.u8, 0, 8);
+
   // get sw from SD card
   byte download_block_Sequence = 1;
   int i, j;
+  memset(tx_frame.data.u8, 0, 8);
   File file = fs.open(path);
   if (!file)
   {
     Serial.println("Failed to open file for reading");
     return false;
   }
+  Serial.println("File Found Flashing ECU");
   uint32_t flen = file.size();
   byte sequence_counter = 0;
   //Ignoring last 4 bytes as it is CRC
@@ -205,21 +154,15 @@ boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
       tx_frame.data.u8[1] = 0x02;
       tx_frame.data.u8[2] = 0x36;
       tx_frame.data.u8[3] = download_block_Sequence;
-      for (i = 4; (i < 8) || (flen > 0); i++)
+      for (i = 4; (i < 8) && (flen > 0); i++)
       {
         tx_frame.data.u8[i] = file.read();
+        Serial.print(tx_frame.data.u8[i], HEX);
         flen--;
       }
+      Serial.println();
       ESP32Can.CANWriteFrame(&tx_frame);
-      rxframe = can_rx_frame();
-      if (rxframe[0] == 0x30)
-      {
-        //success
-      }
-      else
-      {
-        return false;
-      }
+      can_rx_Frame(0, 0x30);
       memset(tx_frame.data.u8, 0, 8);
 
       for (j = 0; (j < 252) && (flen > 0); j = j + 7)
@@ -229,41 +172,33 @@ boolean UDSTransfertDataCB(fs::FS &fs, const char * path)
         for (i = 1; (i < 8) && (flen > 0); i++)
         {
           tx_frame.data.u8[i] = file.read();
+          Serial.print(tx_frame.data.u8[i], HEX);
           flen--;
         }
         ESP32Can.CANWriteFrame(&tx_frame);
+        Serial.println();
       }
-      rxframe = can_rx_frame();
-      if (rxframe[1] == 0x76)
-      {
-        //success
-      }
-      else
-      {
-        return false;
-      }
+      can_rx_Frame(1, 0x76);
+      sequence_counter = 0;
     }
     else
     {
       tx_frame.data.u8[0] = flen + 2;
       tx_frame.data.u8[1] = 0x36;
       tx_frame.data.u8[2] = download_block_Sequence;
-      for (i = 3; (i < 8) || (flen > 0); i++)
+      for (i = 3; (i < 8) && (flen > 0); i++)
       {
         tx_frame.data.u8[i] = file.read();
         flen--;
       }
       ESP32Can.CANWriteFrame(&tx_frame);
-      rxframe = can_rx_frame();
-      if (rxframe[1] == 0x76)
-      {
-        //success
-      }
-      else
-      {
-        return false;
-      }
+      can_rx_Frame(1, 0x76);
     }
+    download_block_Sequence++;
+    Serial.print("file size =");
+    Serial.println(flen);
+    delay(100);
+    
   }
   return true;
 }
@@ -275,15 +210,7 @@ void UDSRequestTransfertExitCB()
   tx_frame.data.u8[1] = 0x37;
   ESP32Can.CANWriteFrame(&tx_frame);
   // wait upto 500ms for response
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0x77)
-  {
-    //success
-  }
-  else
-  {
-    //fail
-  }
+  can_rx_Frame(1, 0x77);
 }
 
 boolean UDSRoutinControlCB(unsigned int Fn_ID)
@@ -291,7 +218,7 @@ boolean UDSRoutinControlCB(unsigned int Fn_ID)
   memset(tx_frame.data.u8, 0, 8);
   if (Fn_ID == ERASE_MEMORY)
   {
-    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[0] = 0x05;
     tx_frame.data.u8[1] = 0x31;
     tx_frame.data.u8[2] = 0x01;
     tx_frame.data.u8[3] = 0xFF;
@@ -300,7 +227,7 @@ boolean UDSRoutinControlCB(unsigned int Fn_ID)
   }
   if (Fn_ID == CHECK_MEMORY)
   {
-    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[0] = 0x05;
     tx_frame.data.u8[1] = 0x31;
     tx_frame.data.u8[2] = 0x01;
     tx_frame.data.u8[3] = 0xFF;
@@ -309,7 +236,7 @@ boolean UDSRoutinControlCB(unsigned int Fn_ID)
   }
   if (Fn_ID == WRITE_SECURITY_KEY)
   {
-    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[0] = 0x05;
     tx_frame.data.u8[1] = 0x31;
     tx_frame.data.u8[2] = 0x01;
     tx_frame.data.u8[3] = 0xFF;
@@ -317,30 +244,35 @@ boolean UDSRoutinControlCB(unsigned int Fn_ID)
     tx_frame.data.u8[5] = 0x01;
   }
   ESP32Can.CANWriteFrame(&tx_frame);
-  rxframe = can_rx_frame();
-  if (rxframe[1] == 0x71)
-  {
-    //success
-  }
-  else
-  {
-    return false;
-  }
+  can_rx_Frame(1, 0x71);
 }
 
 void Reflash_ECU_Runable()
 {
+  boolean result;
   UDSDiagnosisSessionControlCB(EXTENDED_SESSION);
   UDSCommunicationControlCB();
   UDSControlDTCSettings();
   UDSSecurityAccessCB(REQUEST_SEED);
   UDSSecurityAccessCB(SEND_KEY);
   UDSDiagnosisSessionControlCB(PROGRAMMING_SESSION);
-  UDSRoutinControlCB(ERASE_MEMORY);
+  result = UDSRoutinControlCB(ERASE_MEMORY);
   UDSRequestDownloadCB(addr, len);
-  UDSTransfertDataCB(SD, filenamePath);
+  result = UDSTransfertDataCB(SD, filenamePath);
   UDSRequestTransfertExitCB();
   UDSRoutinControlCB(CHECK_MEMORY);
   UDSRoutinControlCB(WRITE_SECURITY_KEY);
   UDSECUResetCB();
+}
+
+
+byte can_rx_Frame(byte pos, byte data)
+{
+  if (can_rx_frame())
+  { if (rxframe[pos] == data)
+    {
+      return true;
+    }
+  }
+  return false;
 }
